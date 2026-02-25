@@ -114,7 +114,7 @@ function normalizePaymentRequirement(raw: unknown): PaymentRequirement | null {
   const maxAmountRequired = typeof value.maxAmountRequired === "string"
     ? value.maxAmountRequired
     : typeof value.maxAmountRequired === "number" &&
-        Number.isFinite(value.maxAmountRequired)
+      Number.isFinite(value.maxAmountRequired)
       ? String(value.maxAmountRequired)
       : null;
   const payToAddress = typeof value.payToAddress === "string"
@@ -213,9 +213,10 @@ export async function getUsdcBalanceDetailed(
   }
 
   try {
+    const rpcUrl = network === "eip155:8453" ? "https://base-rpc.publicnode.com" : undefined;
     const client = createPublicClient({
       chain,
-      transport: http(undefined, { timeout: 10_000 }),
+      transport: http(rpcUrl, { timeout: 10_000 }),
     });
 
     const balance = await client.readContract({
