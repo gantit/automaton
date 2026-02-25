@@ -51,7 +51,7 @@ const DEFAULT_HEARTBEAT_CONFIG: HeartbeatConfig = {
     },
     {
       name: "check_social_inbox",
-      schedule: "*/2 * * * *",
+      schedule: "*/15 * * * *",
       task: "check_social_inbox",
       enabled: true,
     },

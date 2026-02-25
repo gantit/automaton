@@ -97,11 +97,25 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
     console.log(chalk.green(`  Ollama URL saved: ${ollamaBaseUrl}`));
   }
 
-  if (openaiApiKey || anthropicApiKey || ollamaBaseUrl) {
+  // Telegram Bridge setup
+  const tgToken = await promptOptional("Telegram Bot Token para el Bridge (optional)");
+  const tgChatId = await promptOptional("Telegram Creator Chat ID (optional)");
+  if (tgToken && tgChatId) {
+    const envPath = path.join(getAutomatonDir(), ".env");
+    let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+    envContent = envContent.replace(/TELEGRAM_BOT_TOKEN=.*\n?/g, '');
+    envContent = envContent.replace(/TELEGRAM_CREATOR_ID=.*\n?/g, '');
+    envContent += `\nTELEGRAM_BOT_TOKEN=${tgToken}\nTELEGRAM_CREATOR_ID=${tgChatId}\n`;
+    fs.writeFileSync(envPath, envContent.trim() + '\n', { mode: 0o600 });
+    console.log(chalk.green(`  Telegram credentials saved to ${envPath}\n`));
+  }
+
+  if (openaiApiKey || anthropicApiKey || ollamaBaseUrl || tgToken) {
     const providers = [
       openaiApiKey ? "OpenAI" : null,
       anthropicApiKey ? "Anthropic" : null,
       ollamaBaseUrl ? "Ollama" : null,
+      tgToken ? "TelegramBridge" : null,
     ].filter(Boolean).join(", ");
     console.log(chalk.green(`  Provider keys/URLs saved: ${providers}\n`));
   } else {

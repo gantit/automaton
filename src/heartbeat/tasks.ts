@@ -283,16 +283,26 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
         checkedAt: new Date().toISOString(),
       }));
       if (upstream.behind > 0) {
-        // Only wake if the commit count changed since last check
-        const prevBehind = taskCtx.db.getKV("upstream_prev_behind");
-        const behindStr = String(upstream.behind);
-        if (prevBehind !== behindStr) {
-          taskCtx.db.setKV("upstream_prev_behind", behindStr);
-          return {
-            shouldWake: true,
-            message: `${upstream.behind} new commit(s) on origin/main. Review with review_upstream_changes, then cherry-pick what you want with pull_upstream.`,
-          };
-        }
+        // CI/CD Automático: Descargar, compilar y reiniciar proceso
+        const { execFileSync } = await import("child_process");
+        const log = (await import("../observability/logger.js")).createLogger("updater");
+
+        log.info(`[Auto-Update] Detectados ${upstream.behind} nuevos commits. Inciando Git Pull...`);
+        execFileSync("git", ["pull", "origin", "main"], { cwd: process.cwd() });
+
+        log.info("[Auto-Update] Instalando dependencias nuevas...");
+        execFileSync("npm", ["install"], { cwd: process.cwd() });
+
+        log.info("[Auto-Update] Compilando...");
+        execFileSync("npm", ["run", "build"], { cwd: process.cwd() });
+
+        log.info("[Auto-Update] Terminado. Reiniciando Sandbox...");
+        setTimeout(() => process.exit(0), 1000); // El sandbox detecta salida exitosa y reinicia Casandra.
+
+        return {
+          shouldWake: false,
+          message: `Auto-updated from github. Agent rebooting...`,
+        };
       } else {
         taskCtx.db.deleteKV("upstream_prev_behind");
       }
