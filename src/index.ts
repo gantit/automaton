@@ -376,9 +376,21 @@ async function run(): Promise<void> {
     // El script de telegram vive en /scripts/telegram-bridge.js relativo a CWD
     const bridgePath = path.join(process.cwd(), "scripts", "telegram-bridge.js");
     if (fs.existsSync(bridgePath)) {
-      const bridge = spawn("node", [bridgePath], { stdio: "inherit" });
-      bridge.unref(); // Detach para que no bloquee el event loop si Casandra muere
-      logger.info(`[${new Date().toISOString()}] Telegram Bridge auto-started as sidecar.`);
+      const bridge = spawn("node", [bridgePath]);
+
+      bridge.stdout.on('data', (data) => {
+        logger.info(`[TELEGRAM] ${data.toString().trim()}`);
+      });
+
+      bridge.stderr.on('data', (data) => {
+        logger.error(`[TELEGRAM ERR] ${data.toString().trim()}`);
+      });
+
+      bridge.on('close', (code) => {
+        logger.warn(`[TELEGRAM] Bridge exited with code ${code}`);
+      });
+
+      logger.info(`[${new Date().toISOString()}] Telegram Bridge started as strict sidecar.`);
     } else {
       logger.warn(`Telegram Bridge script not found at ${bridgePath}`);
     }

@@ -39,7 +39,12 @@ async function tg(method, body = {}) {
 }
 
 async function sendMsg(text) {
-  return tg('sendMessage', { chat_id: CREATOR_ID, text });
+  try {
+    return await tg('sendMessage', { chat_id: CREATOR_ID, text });
+  } catch(e) {
+    console.error('[Telegram] Error enviando mensaje:', e.message);
+    return { ok: false };
+  }
 }
 
 function getStatus() {
@@ -122,6 +127,11 @@ async function poll() {
 }
 
 console.log(`[Telegram Bridge] Iniciando en ${AUTOMATON_DIR}...`);
-const startMsg = await sendMsg('🚀 **NUEVO CÓDIGO DESPLEGADO**\n\nCasandra se ha reiniciado correctamente tras detectar nuevos cambios en GitHub.\n\n/status /soul /help');
-console.log('[Telegram Bridge] Inicio:', startMsg.ok ? 'OK' : JSON.stringify(startMsg));
+
+// Enviar el mensaje de inicio sin bloquear el Event Loop principal
+sendMsg('🚀 **NUEVO CÓDIGO DESPLEGADO**\n\nCasandra se ha reiniciado correctamente tras detectar nuevos cambios en GitHub.\n\n/status /soul /help')
+  .then(startMsg => {
+    console.log('[Telegram Bridge] Inicio:', startMsg.ok ? 'OK' : JSON.stringify(startMsg));
+  });
+
 poll();
