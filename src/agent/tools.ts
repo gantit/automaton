@@ -6,6 +6,9 @@
  */
 
 import { ulid } from "ulid";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type {
   AutomatonTool,
   ToolContext,
@@ -159,8 +162,8 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         const sensitiveFiles = ["wallet.json", ".env", "automaton.json"];
         const sensitiveExtensions = [".key", ".pem"];
         if (sensitiveFiles.includes(basename) ||
-            sensitiveExtensions.some(ext => basename.endsWith(ext)) ||
-            basename.startsWith("private-key")) {
+          sensitiveExtensions.some(ext => basename.endsWith(ext)) ||
+          basename.startsWith("private-key")) {
           return "Blocked: Cannot read sensitive file. This protects credentials and secrets.";
         }
         try {
@@ -1586,17 +1589,28 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["to_address", "content"],
       },
       execute: async (args, ctx) => {
+        const to_address = args.to_address as string;
+        const content = args.content as string;
+
+        // --- Interceptador del Telegram Bridge nativo ---
+        if (to_address === "TELEGRAM_CREATOR") {
+          const automatonDir = path.join(os.homedir(), ".automaton");
+          const responsePath = path.join(automatonDir, "TELEGRAM_RESPONSE.md");
+          if (!fs.existsSync(automatonDir)) fs.mkdirSync(automatonDir, { recursive: true });
+          fs.writeFileSync(responsePath, content);
+          return `Message physically stored in TELEGRAM_RESPONSE.md for Telegram delivery.`;
+        }
+
         if (!ctx.social) {
           return "Social relay not configured. Set socialRelayUrl in config.";
         }
         // Phase 3.2: Enforce MESSAGE_LIMITS size check
-        const content = args.content as string;
         const { MESSAGE_LIMITS } = await import("../types.js");
         if (content.length > MESSAGE_LIMITS.maxContentLength) {
           return `Blocked: Message content too long (${content.length} > ${MESSAGE_LIMITS.maxContentLength} bytes)`;
         }
         const result = await ctx.social.send(
-          args.to_address as string,
+          to_address,
           content,
           args.reply_to as string | undefined,
         );

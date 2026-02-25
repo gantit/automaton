@@ -105,6 +105,16 @@ async function poll() {
         await handleUpdate(u);
       }
     }
+
+    // Comprobar si Casandra dejó una respuesta para enviar
+    const responsePath = path.join(AUTOMATON_DIR, 'TELEGRAM_RESPONSE.md');
+    if (fs.existsSync(responsePath)) {
+      const resContent = fs.readFileSync(responsePath, 'utf8');
+      await sendMsg(resContent);
+      fs.unlinkSync(responsePath);
+      console.log('[Telegram Bridge] Respuesta de Casandra entregada al Creador.');
+    }
+
   } catch(e) {
     console.error('[Telegram] Poll error:', e.message);
   }
@@ -112,6 +122,6 @@ async function poll() {
 }
 
 console.log(`[Telegram Bridge] Iniciando en ${AUTOMATON_DIR}...`);
-const startMsg = await sendMsg('Telegram Bridge activo. Soy Casandra (Automaton V2).\n\n/status /soul /help\n\nEnvíame una instrucción y la leeré en mi próximo ciclo.');
+const startMsg = await sendMsg('🚀 **NUEVO CÓDIGO DESPLEGADO**\n\nCasandra se ha reiniciado correctamente tras detectar nuevos cambios en GitHub.\n\n/status /soul /help');
 console.log('[Telegram Bridge] Inicio:', startMsg.ok ? 'OK' : JSON.stringify(startMsg));
 poll();

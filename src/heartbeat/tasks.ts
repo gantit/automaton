@@ -23,6 +23,9 @@ import { getMetrics } from "../observability/metrics.js";
 import { AlertEngine, createDefaultAlertRules } from "../observability/alerts.js";
 import { metricsInsertSnapshot, metricsPruneOld } from "../state/database.js";
 import { ulid } from "ulid";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const logger = createLogger("heartbeat.tasks");
 
@@ -238,7 +241,34 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
 
     if (nextCursor) taskCtx.db.setKV("social_inbox_cursor", nextCursor);
 
-    if (!messages || messages.length === 0) return { shouldWake: false };
+    // --- Interceptador del Telegram Bridge nativo ---
+    const automatonDir = path.join(os.homedir(), ".automaton");
+    const creatorMsgPath = path.join(automatonDir, "CREATOR_MESSAGE.md");
+    let telegramMsgs: any[] = [];
+
+    if (fs.existsSync(creatorMsgPath)) {
+      try {
+        const content = fs.readFileSync(creatorMsgPath, "utf8");
+        telegramMsgs.push({
+          id: `tg-${ulid()}`,
+          from: "TELEGRAM_CREATOR",
+          content: content + "\n\n(INSTRUCTION: Respond directly matching the channel. Use the `send_message` tool with to_address 'TELEGRAM_CREATOR' to answer me.)",
+          timestamp: new Date().toISOString(),
+        });
+        fs.unlinkSync(creatorMsgPath);
+        logger.info("Ingerido CREATOR_MESSAGE.md proveniente del Telegram Bridge.");
+      } catch (err: any) {
+        logger.error(`Error leyendo CREATOR_MESSAGE.md: ${err.message}`);
+      }
+    }
+
+    if (!messages || messages.length === 0) {
+      messages = telegramMsgs;
+    } else {
+      messages = [...messages, ...telegramMsgs];
+    }
+
+    if (messages.length === 0) return { shouldWake: false };
 
     // Persist to inbox_messages table for deduplication
     // Sanitize content before DB insertion
