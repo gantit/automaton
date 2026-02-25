@@ -367,6 +367,25 @@ async function run(): Promise<void> {
   heartbeat.start();
   logger.info(`[${new Date().toISOString()}] Heartbeat daemon started.`);
 
+  // Start Telegram Bridge Sidecar
+  try {
+    const { spawn } = await import("child_process");
+    const path = await import("path");
+    const fs = await import("fs");
+
+    // El script de telegram vive en /scripts/telegram-bridge.js relativo a CWD
+    const bridgePath = path.join(process.cwd(), "scripts", "telegram-bridge.js");
+    if (fs.existsSync(bridgePath)) {
+      const bridge = spawn("node", [bridgePath], { stdio: "inherit" });
+      bridge.unref(); // Detach para que no bloquee el event loop si Casandra muere
+      logger.info(`[${new Date().toISOString()}] Telegram Bridge auto-started as sidecar.`);
+    } else {
+      logger.warn(`Telegram Bridge script not found at ${bridgePath}`);
+    }
+  } catch (err: any) {
+    logger.warn(`Failed to auto-start Telegram Bridge: ${err.message}`);
+  }
+
   // Handle graceful shutdown
   const shutdown = () => {
     logger.info(`[${new Date().toISOString()}] Shutting down...`);
