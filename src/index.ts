@@ -368,6 +368,7 @@ async function run(): Promise<void> {
   logger.info(`[${new Date().toISOString()}] Heartbeat daemon started.`);
 
   // Start Telegram Bridge Sidecar
+  let bridgeProcess: any = null;
   try {
     const { spawn } = await import("child_process");
     const path = await import("path");
@@ -376,17 +377,17 @@ async function run(): Promise<void> {
     // El script de telegram vive en /scripts/telegram-bridge.js relativo a CWD
     const bridgePath = path.join(process.cwd(), "scripts", "telegram-bridge.js");
     if (fs.existsSync(bridgePath)) {
-      const bridge = spawn("node", [bridgePath]);
+      bridgeProcess = spawn("node", [bridgePath]);
 
-      bridge.stdout.on('data', (data) => {
+      bridgeProcess.stdout.on('data', (data: any) => {
         logger.info(`[TELEGRAM] ${data.toString().trim()}`);
       });
 
-      bridge.stderr.on('data', (data) => {
+      bridgeProcess.stderr.on('data', (data: any) => {
         logger.error(`[TELEGRAM ERR] ${data.toString().trim()}`);
       });
 
-      bridge.on('close', (code) => {
+      bridgeProcess.on('close', (code: any) => {
         logger.warn(`[TELEGRAM] Bridge exited with code ${code}`);
       });
 
@@ -398,12 +399,15 @@ async function run(): Promise<void> {
     logger.warn(`Failed to auto-start Telegram Bridge: ${err.message}`);
   }
 
-  // Handle graceful shutdown
   const shutdown = () => {
     logger.info(`[${new Date().toISOString()}] Shutting down...`);
     heartbeat.stop();
     db.setAgentState("sleeping");
     db.close();
+    if (bridgeProcess) {
+      logger.info("Killing Telegram Bridge sidecar...");
+      bridgeProcess.kill();
+    }
     process.exit(0);
   };
 
