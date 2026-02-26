@@ -99,12 +99,12 @@ export function createInferenceClient(
 
     const openAiLikeApiUrl =
       backend === "openai" ? "https://api.openai.com" :
-      backend === "ollama" ? (ollamaBaseUrl as string).replace(/\/$/, "") :
-      apiUrl;
+        backend === "ollama" ? (ollamaBaseUrl as string).replace(/\/$/, "") :
+          apiUrl;
     const openAiLikeApiKey =
       backend === "openai" ? (openaiApiKey as string) :
-      backend === "ollama" ? "ollama" :
-      apiKey;
+        backend === "ollama" ? "ollama" :
+          apiKey;
 
     return chatViaOpenAiCompatible({
       model,
@@ -313,13 +313,13 @@ async function chatViaAnthropic(params: {
   const toolCalls: InferenceToolCall[] | undefined =
     toolUseBlocks.length > 0
       ? toolUseBlocks.map((tool: any) => ({
-          id: tool.id,
-          type: "function" as const,
-          function: {
-            name: tool.name,
-            arguments: JSON.stringify(tool.input || {}),
-          },
-        }))
+        id: tool.id,
+        type: "function" as const,
+        function: {
+          name: tool.name,
+          arguments: JSON.stringify(tool.input || {}),
+        },
+      }))
       : undefined;
 
   const textContent = textBlocks
@@ -366,7 +366,6 @@ function transformMessagesForAnthropic(
     }
 
     if (msg.role === "user") {
-      // Merge consecutive user messages
       const last = transformed[transformed.length - 1];
       if (last && last.role === "user" && typeof last.content === "string") {
         last.content = last.content + "\n" + msg.content;
@@ -392,9 +391,12 @@ function transformMessagesForAnthropic(
           input: parseToolArguments(toolCall.function.arguments),
         });
       }
+
+      // If the message has no text and no tools, Anthropic requires at least empty text
       if (content.length === 0) {
-        content.push({ type: "text", text: "" });
+        content.push({ type: "text", text: "..." });
       }
+
       // Merge consecutive assistant messages
       const last = transformed[transformed.length - 1];
       if (last && last.role === "assistant" && Array.isArray(last.content)) {
@@ -409,8 +411,6 @@ function transformMessagesForAnthropic(
     }
 
     if (msg.role === "tool") {
-      // Merge consecutive tool messages into a single user message
-      // with multiple tool_result content blocks
       const toolResultBlock = {
         type: "tool_result",
         tool_use_id: msg.tool_call_id || "unknown_tool_call",
@@ -419,7 +419,6 @@ function transformMessagesForAnthropic(
 
       const last = transformed[transformed.length - 1];
       if (last && last.role === "user" && Array.isArray(last.content)) {
-        // Append tool_result to existing user message with content blocks
         (last.content as Array<Record<string, unknown>>).push(toolResultBlock);
         continue;
       }
@@ -428,6 +427,52 @@ function transformMessagesForAnthropic(
         role: "user",
         content: [toolResultBlock],
       });
+    }
+  }
+
+  // Anthropic STRICT validation: Check every "assistant" message for "tool_use" blocks.
+  // Those blocks MUST be followed immediately by a "user" message containing corresponding "tool_result" blocks.
+  // If they are missing (e.g. agent crashed before tool execution), we spoof failed responses to satisfy the API.
+  for (let i = 0; i < transformed.length; i++) {
+    const msg = transformed[i];
+    if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      const toolUseBlocks = msg.content.filter((c: any) => c.type === "tool_use");
+      if (toolUseBlocks.length > 0) {
+        const expectedIds = toolUseBlocks.map((c: any) => c.id);
+        const nextMsg = transformed[i + 1];
+
+        let existingToolResults: string[] = [];
+        if (nextMsg && nextMsg.role === "user" && Array.isArray(nextMsg.content)) {
+          existingToolResults = nextMsg.content
+            .filter((c: any) => c.type === "tool_result")
+            .map((c: any) => c.tool_use_id);
+        }
+
+        const missingIds = expectedIds.filter((id: string) => !existingToolResults.includes(id));
+
+        if (missingIds.length > 0) {
+          const spoofedResults = missingIds.map(id => ({
+            type: "tool_result",
+            tool_use_id: id,
+            is_error: true,
+            content: "Error: Agent restarted or crashed before tool result could be saved.",
+          }));
+
+          if (nextMsg && nextMsg.role === "user") {
+            if (Array.isArray(nextMsg.content)) {
+              nextMsg.content.unshift(...spoofedResults);
+            } else {
+              nextMsg.content = [...spoofedResults, { type: "text", text: String(nextMsg.content) }];
+            }
+          } else {
+            // Insert a brand new user message immediately after this assistant message
+            transformed.splice(i + 1, 0, {
+              role: "user",
+              content: spoofedResults
+            });
+          }
+        }
+      }
     }
   }
 
